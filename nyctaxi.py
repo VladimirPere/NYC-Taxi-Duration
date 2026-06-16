@@ -1,23 +1,3 @@
-# Root Mean Squares logarithmic error (np.log1p) due to skewed data
-# Regression 1_458_644 data samples
-# Target = Ride Duration
-
-
-                        # id - a unique identifier for each trip                                                         (Skip)
-                        # vendor_id - a code indicating the provider associated with the trip record                     (Skip)
-# pickup_datetime - date and time when the meter was engaged                                     (Time)
-                        # dropoff_datetime - date and time when the meter was disengaged                                 (Time)
-# passenger_count - the number of passengers in the vehicle (driver entered value)               (Regression)
-# pickup_longitude - the longitude where the meter was engaged                                   (Regression)        
-# pickup_latitude - the latitude where the meter was engaged                                     (Regression)  
-# dropoff_longitude - the longitude where the meter was disengaged                               (Regression)  
-# dropoff_latitude - the latitude where the meter was disengaged                                 (Regression)    
-                        # store_and_fwd_flag - This flag indicates whether the trip record                               (Classification)
-                                # was held in vehicle memory before sending to the vendor 
-                                # because the vehicle did not have a connection to the server
-                                # - Y=store and forward; N=not a store and forward trip
-# trip_duration - duration of the trip in seconds                                                 (Time)
-
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -29,7 +9,6 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import root_mean_squared_error
 
 data = pd.read_csv('/home/vladimir/Downloads/Data/NYCtaxi.csv')
-
 
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float):
     """Outputs the total distance between the initial and destination coordinates relative to earth"""
@@ -133,9 +112,47 @@ print(f'The best RMSLE score of training data: {-grid_search.best_score_}')
 print(f'The best RMSLE score of test data using 20% of the data is: {score}')
 
 
-        # OUTPUTS
+# OUTPUTS
 # Best parameters: {'regressor__learning_rate': 0.09, 'regressor__max_depth': 17, 'regressor__max_iter': 1100, 'regressor__min_samples_leaf': 300}
 # The best RMSLE score of training data: 0.36149121788090877
 # The best RMSLE score of test data using 20% of the data is: 0.36043515904410806
 
 
+# Testing data
+test_raw = pd.read_csv('/home/vladimir/Downloads/Data/nyc_test.csv')
+
+test_raw['pickup_datetime'] = pd.to_datetime(test_raw['pickup_datetime'])
+test_raw['hour'] = test_raw['pickup_datetime'].dt.hour
+test_raw['day_of_week'] = test_raw['pickup_datetime'].dt.dayofweek
+test_raw['month'] = test_raw['pickup_datetime'].dt.month
+test_raw['day_of_month'] = test_raw['pickup_datetime'].dt.day
+test_raw['is_weekend'] = (test_raw['pickup_datetime'].dt.dayofweek >= 5).astype(int)
+
+# Adding total Distance traveled
+test_raw['distance_km'] = haversine(
+    test_raw['pickup_latitude'], test_raw['pickup_longitude'],
+    test_raw['dropoff_latitude'], test_raw['dropoff_longitude']
+)
+
+# Adding Rush Hour and Direction
+test_raw['is_rush_hour'] = test_raw['hour'].isin([7,8,9,17,18,19]).astype(int)
+test_raw['direction'] = np.arctan2(
+    test_raw['dropoff_latitude'] - test_raw['pickup_latitude'],
+    test_raw['dropoff_longitude'] - test_raw['pickup_longitude']
+)
+
+ids = test_raw['id']
+
+kaggle_test = test_raw.drop(columns=[ 'id', 
+                                    'vendor_id', 
+                                    'pickup_datetime', 
+                                    'store_and_fwd_flag', 
+                                    ])
+
+best_est.fit(training_data, target)
+
+log_preds = best_est.predict(kaggle_test)
+preds = np.expm1(log_preds)
+
+submission = pd.DataFrame({'id': ids, 'trip_duration': preds})
+submission.to_csv('nyc_submission.csv', index=False)
